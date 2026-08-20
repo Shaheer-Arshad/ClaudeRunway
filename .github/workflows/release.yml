@@ -1,0 +1,74 @@
+# Publishes a prebuilt, universal ClaudeRunway.app zip to GitHub Releases.
+#
+# Tag a commit and push it:
+#   git tag v1.1 && git push origin v1.1
+#
+# Or run it by hand from the Actions tab with a version like "1.1".
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build and publish (no leading "v")
+        required: true
+
+permissions:
+  contents: write   # needed to create the release
+
+jobs:
+  release:
+    # arm64 runner with Command Line Tools preinstalled; build.sh needs nothing else.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: ./run-tests.sh
+
+      - name: Package
+        run: ./package.sh "${{ steps.v.outputs.version }}"
+
+      - name: Verify the bundle is universal and signed
+        run: |
+          APP="$HOME/ClaudeRunway-check/Claude Runway/ClaudeRunway.app"
+          mkdir -p "$HOME/ClaudeRunway-check"
+          ditto -x -k "dist/ClaudeRunway-${{ steps.v.outputs.version }}.zip" "$HOME/ClaudeRunway-check"
+          lipo -archs "$APP/Contents/MacOS/ClaudeRunway"
+          codesign --verify --verbose "$APP"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          printf '%s\n' \
+            "Download **ClaudeRunway-$VERSION.zip**, unzip, and drag ClaudeRunway.app to Applications." \
+            "" \
+            "The app is ad-hoc signed (no paid Apple Developer account), so the first launch is blocked:" \
+            "macOS says it cannot check it for malicious software. Open **System Settings -> Privacy &" \
+            "Security**, scroll to the ClaudeRunway message, and click **Open Anyway**. (On macOS 14 you" \
+            "can right-click the app -> **Open** instead; that shortcut was removed in macOS 15.)" \
+            "" \
+            "If macOS says the app is \"damaged\" instead, clear the quarantine flag:" \
+            "" \
+            '    xattr -dr com.apple.quarantine /Applications/ClaudeRunway.app' \
+            "" \
+            "Requires macOS 14+ and Claude Code, installed and signed in." \
+            "Universal binary: Apple Silicon and Intel." \
+            > notes.md
+          gh release create "v$VERSION" "dist/ClaudeRunway-$VERSION.zip" \
+            --title "Claude Runway $VERSION" \
+            --notes-file notes.md
