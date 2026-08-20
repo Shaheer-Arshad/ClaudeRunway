@@ -18,7 +18,8 @@ PKG="$STAGE/Claude Runway"
 mkdir -p "$PKG"
 
 echo "==> Building"
-./build.sh "$PKG" >/dev/null
+# Universal so the zip runs on Intel too — a downloaded build can land on any Mac.
+VERSION="$VERSION" UNIVERSAL=1 ./build.sh "$PKG" >/dev/null
 
 cat > "$PKG/INSTALL.txt" <<'TXT'
 Claude Runway — menu bar app for your Claude Code 5-hour and weekly limits
@@ -28,17 +29,24 @@ INSTALL
 
 1. Drag ClaudeRunway.app to your Applications folder.
 
-2. The first launch will be blocked — macOS says the developer can't be
-   verified. This app isn't signed with a paid Apple Developer certificate,
-   so that warning is expected.
+2. The first launch will be blocked — macOS says it can't check the app
+   for malicious software. This app isn't signed with a paid Apple
+   Developer certificate, so that warning is expected.
 
    To open it anyway:
-     - Right-click (or Control-click) the app and choose "Open"
-     - Click "Open" in the dialog
+     - Open System Settings > Privacy & Security
+     - Scroll down to the message about ClaudeRunway
+     - Click "Open Anyway" and authenticate
 
-   If you don't see an "Open" option, go to
-   System Settings > Privacy & Security, scroll down, and click
-   "Open Anyway" next to the Claude Runway message.
+   On macOS 14 (Sonoma) you can instead right-click the app and choose
+   "Open". That shortcut was removed in macOS 15 (Sequoia), so on 15 and
+   later use the Settings route above.
+
+   If macOS instead says the app is "damaged and can't be opened", the
+   bundle's signature was mangled in transit. Run this once in Terminal,
+   then open it normally:
+
+     xattr -dr com.apple.quarantine /Applications/ClaudeRunway.app
 
    You only have to do this once.
 

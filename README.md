@@ -42,6 +42,44 @@ the popover, and the 90% notification fires for it like any other limit.
 
 ## Install
 
+Two options — take the download unless you want to read the source first.
+
+### Download a build
+
+Grab the latest **ClaudeRunway-*.zip** from
+[Releases](https://github.com/Shaheer-Arshad/ClaudeRunway/releases), unzip it,
+and drag `ClaudeRunway.app` to your Applications folder. Universal binary —
+Apple Silicon and Intel.
+
+**The first launch will be blocked.** Anything downloaded through a browser
+carries macOS's quarantine flag, and this app is ad-hoc signed rather than
+notarised, so Gatekeeper stops it: *"ClaudeRunway can't be opened because Apple
+cannot check it for malicious software."* That's expected, and it's a one-time
+step:
+
+1. Open **System Settings → Privacy & Security**.
+2. Scroll down to the message about ClaudeRunway and click **Open Anyway**.
+3. Authenticate, then click **Open**.
+
+On macOS 14 (Sonoma) you can instead right-click the app → **Open** → **Open**.
+That shortcut was removed in macOS 15 (Sequoia), so on 15 and later the Settings
+route above is the only one that works.
+
+If macOS says the app is **"damaged and can't be opened"** rather than
+unverified, the bundle's signature was mangled in transit — the releases are
+packed with `ditto` and signature-verified in CI, so this shouldn't normally
+happen. Clearing the quarantine flag by hand fixes it:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/ClaudeRunway.app
+```
+
+Only notarisation removes the prompt entirely, and that needs a paid Apple
+Developer account. See [the ad-hoc signing
+limitation](#known-limitation-ad-hoc-signing).
+
+### Build it yourself
+
 ```sh
 git clone https://github.com/Shaheer-Arshad/ClaudeRunway.git
 cd ClaudeRunway
@@ -50,23 +88,31 @@ open ~/Applications/ClaudeRunway.app
 ```
 
 Builds with **Command Line Tools only — no Xcode needed**. If `swiftc` is
-missing, run `xcode-select --install`.
+missing, run `xcode-select --install`. A local build is arm64-only and skips
+Gatekeeper entirely, since nothing was downloaded.
 
 It's an `LSUIElement` app, so it has no Dock icon. To launch it after quitting,
 find "Claude Runway" in Spotlight or `~/Applications`, or drag it to your Dock.
 The popover's **Launch at login** toggle avoids the question entirely.
 
-### Sharing a build
+### Cutting a release
+
+Tagging publishes the zip; [`.github/workflows/release.yml`](.github/workflows/release.yml)
+builds it universal on a macOS runner, runs the tests, and attaches it to a
+GitHub Release.
 
 ```sh
-./package.sh            # → dist/ClaudeRunway-1.0.zip
+git tag v1.1 && git push origin v1.1
 ```
 
-The app is ad-hoc signed, so Gatekeeper blocks the first launch on another Mac
-(`spctl` reports `rejected` — verified, not assumed). The recipient right-clicks
-→ **Open** once, or uses System Settings → Privacy & Security → **Open Anyway**.
-Removing that friction requires a paid Apple Developer account and notarisation.
-See [the ad-hoc signing limitation](#known-limitation-ad-hoc-signing).
+To build the same zip locally instead:
+
+```sh
+./package.sh 1.1        # → dist/ClaudeRunway-1.1.zip
+```
+
+The version argument is stamped into `Info.plist`, so what the About text
+reports matches the release it came from.
 
 ## Getting a session key
 
