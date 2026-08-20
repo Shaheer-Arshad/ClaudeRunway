@@ -1,0 +1,27 @@
+# Build output
+build/
+dist/
+*.zip
+
+# Compiled app bundles
+*.app/
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Xcode / SPM (not used by build.sh, but easy to acquire)
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.swiftpm/
+
+# Local runtime state — the app writes here, but never inside the repo.
+# Listed so a stray copy can't be committed by accident.
+debug.log
+history.jsonl
+worklog-index.json
+last-snapshot.json
