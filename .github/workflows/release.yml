@@ -20,8 +20,10 @@ permissions:
 
 jobs:
   release:
-    # arm64 runner with Command Line Tools preinstalled; build.sh needs nothing else.
-    runs-on: macos-14
+    # Command Line Tools come preinstalled; build.sh needs nothing else. Pinned to
+    # macos-15, not macos-14: the 14 image ships Swift 5.10, which rejects
+    # concurrency the sources rely on. LSMinimumSystemVersion stays 14.0 either way.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -34,6 +36,9 @@ jobs:
             VERSION="${GITHUB_REF_NAME#v}"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Toolchain
+        run: swiftc --version
 
       - name: Test
         run: ./run-tests.sh
