@@ -15,6 +15,12 @@ private func titleLine(_ title: String) -> String {
     """
 }
 
+private func customTitleLine(_ title: String) -> String {
+    """
+    {"type":"custom-title","customTitle":"\(title)","sessionId":"abc"}
+    """
+}
+
 /// Mirrors the real assistant tool-use envelope a TodoWrite call arrives in.
 private func todoLine(_ stamp: String, _ todos: [(String, String)]) -> String {
     let items = todos.map { #"{"content":"\#($0.0)","status":"\#($0.1)","activeForm":"doing"}"# }
@@ -215,6 +221,58 @@ func runWorkLogTests() {
         T.equal(groups.first?.repo, "started-today",
                 "the repo actually worked on first that day leads")
         T.equal(groups.last?.repo, "long-running", "the resumed session follows")
+    }
+
+    T.test("a renamed session shows the name the user gave it") {
+        let transcript = [
+            userLine("2026-08-10T09:00:00.000Z"),
+            titleLine("Investigate flaky spec"),
+            customTitleLine("Runway work log fixes"),
+        ].joined(separator: "\n")
+
+        T.equal(WorkLogParser.parse(transcript, timeZone: utc)?.title,
+                "Runway work log fixes", "the custom title replaces the generated one")
+    }
+
+    T.test("a custom title wins even when the ai-title is written after it") {
+        // Ordering in the transcript is not a guarantee; precedence is.
+        let transcript = [
+            userLine("2026-08-10T09:00:00.000Z"),
+            customTitleLine("Runway work log fixes"),
+            titleLine("Investigate flaky spec"),
+        ].joined(separator: "\n")
+
+        T.equal(WorkLogParser.parse(transcript, timeZone: utc)?.title,
+                "Runway work log fixes", "a user-chosen name is never overwritten")
+    }
+
+    T.test("a session renamed before it was ever titled still shows") {
+        let transcript = [
+            userLine("2026-08-10T09:00:00.000Z"),
+            customTitleLine("Runway work log fixes"),
+        ].joined(separator: "\n")
+
+        T.equal(WorkLogParser.parse(transcript, timeZone: utc)?.title,
+                "Runway work log fixes", "a custom title alone is title enough")
+    }
+
+    T.test("copied text is plain, undated, and shaped like the panel") {
+        let session = WorkLogSession(
+            sessionID: "abc", cwd: "/Users/x/Desktop/skuscraper", title: "Build crawler",
+            todos: ["Parse the sitemap", "Handle retries"],
+            firstActivity: Date(timeIntervalSince1970: 1_000),
+            lastActivity: Date(timeIntervalSince1970: 2_000),
+            days: ["2026-08-10"],
+            dayStarts: ["2026-08-10": Date(timeIntervalSince1970: 1_000)])
+        let group = RepoGroup(repo: "skuscraper", sessions: [session])
+
+        T.equal(WorkLogStore.plainText(group),
+                "skuscraper\n• Build crawler\n   – Parse the sitemap\n   – Handle retries\n",
+                "no markdown syntax survives into a plain text field")
+
+        let day = WorkDay(date: isoDay("2026-08-10"), groups: [group])
+        T.equal(WorkLogStore.plainText(day), WorkLogStore.plainText(group),
+                "a one-repo day and that repo alone produce the same text")
     }
 
     T.test("a transcript that cannot be read keeps its previous entry") {

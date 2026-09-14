@@ -12,6 +12,17 @@ extension Notification.Name {
 final class WorkLogModel: ObservableObject {
     @Published private(set) var day: WorkDay?
 
+    /// Every day, across the whole history, that has at least one session —
+    /// what the calendar dots. Loaded alongside `day`, not on demand from the
+    /// calendar itself: the calendar can be opened and paged without ever
+    /// touching the store directly.
+    @Published private(set) var activeDays: Set<String> = []
+
+    /// True while a scan is in flight, so the refresh button can show that the
+    /// tap landed. A rescan of an unchanged tree finishes in milliseconds, and
+    /// a control that flickers reads as broken — so the spin is held briefly.
+    @Published private(set) var isLoading = false
+
     /// Days back from *today*, never positive. Stored as an offset rather than
     /// an absolute date so the view rolls over at midnight on its own: an app
     /// left open overnight kept pointing at the day it launched on, which left
@@ -34,12 +45,20 @@ final class WorkLogModel: ObservableObject {
 
     func load() {
         let target = date
+        isLoading = true
+        let started = Date()
         queue.async { [store] in
             let day = store.day(target)
+            let activeDays = store.activeDays()
             Task { @MainActor [weak self] in
+                let elapsed = Date().timeIntervalSince(started)
+                if elapsed < 0.35 { try? await Task.sleep(for: .seconds(0.35 - elapsed)) }
+                guard let self else { return }
+                self.isLoading = false
+                self.activeDays = activeDays
                 // A fast arrow-tap can land two loads out of order; keep only
                 // the one the user is actually looking at.
-                guard let self, Calendar.current.isDate(self.date, inSameDayAs: target) else { return }
+                guard Calendar.current.isDate(self.date, inSameDayAs: target) else { return }
                 self.day = day
             }
         }
@@ -63,9 +82,32 @@ final class WorkLogModel: ObservableObject {
         load()
     }
 
+    /// Rescan now. The watcher and the visibility hooks cover the common cases,
+    /// but a transcript written moments ago can still be behind the FSEvents
+    /// debounce, and this is the button for that.
+    func refresh() {
+        staleWhileHidden = false
+        load()
+    }
+
     func step(_ days: Int) {
+        show(offset: dayOffset + days)
+    }
+
+    /// Move to an absolute date, which is what a calendar hands back. Converted
+    /// straight to an offset so the view keeps rolling over at midnight on its
+    /// own rather than pinning itself to the date that was picked.
+    func jump(to target: Date) {
+        let calendar = Calendar.current
+        let days = calendar.dateComponents([.day],
+                                           from: calendar.startOfDay(for: Date()),
+                                           to: calendar.startOfDay(for: target)).day ?? 0
+        show(offset: days)
+    }
+
+    private func show(offset: Int) {
         // Never walk into the future — there is nothing there by definition.
-        let moved = min(dayOffset + days, 0)
+        let moved = min(offset, 0)
         guard moved != dayOffset else { return }
         dayOffset = moved
         day = nil
@@ -74,9 +116,17 @@ final class WorkLogModel: ObservableObject {
 
     func copyToPasteboard() {
         guard let day else { return }
+        Self.copy(WorkLogStore.plainText(day))
+    }
+
+    func copyToPasteboard(_ group: RepoGroup) {
+        Self.copy(WorkLogStore.plainText(group))
+    }
+
+    private static func copy(_ text: String) {
         let board = NSPasteboard.general
         board.clearContents()
-        board.setString(WorkLogStore.markdown(day), forType: .string)
+        board.setString(text, forType: .string)
     }
 }
 
@@ -93,6 +143,9 @@ struct WorkLogView: View {
     @EnvironmentObject private var visibility: PopoverVisibility
     @Environment(\.colorScheme) private var scheme
     @State private var copied = false
+    /// The repo whose own Copy button was just pressed, for its tick.
+    @State private var copiedRepo: String?
+    @State private var pickingDate = false
 
     /// One long session must not push the rest of the day off the bottom.
     private let todoLimit = 8
@@ -100,6 +153,7 @@ struct WorkLogView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             dayHeader
+            if pickingDate { calendar }
             content
         }
         .onAppear { model.becameVisible() }
@@ -115,11 +169,37 @@ struct WorkLogView: View {
         HStack(spacing: 6) {
             stepButton("chevron.left", days: -1, enabled: true)
 
-            Text(dayLabel)
-                .font(Theme.label(11, weight: .semibold))
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) { pickingDate.toggle() }
+            } label: {
+                HStack(spacing: 3) {
+                    Text(dayLabel)
+                        .font(Theme.label(11, weight: .semibold))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 7, weight: .semibold))
+                        .rotationEffect(.degrees(pickingDate ? 180 : 0))
+                }
+                .foregroundStyle(.primary)
+                // Fills the gap between the arrows so the whole middle of the
+                // header is the hit target, not just the few words of the label.
                 .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Jump to a date")
 
             stepButton("chevron.right", days: 1, enabled: !model.isOnToday)
+
+            Button { model.refresh() } label: {
+                Image(systemName: "arrow.clockwise")
+                    .rotationEffect(.degrees(model.isLoading ? 360 : 0))
+                    .animation(model.isLoading
+                        ? .linear(duration: 0.8).repeatForever(autoreverses: false)
+                        : .default, value: model.isLoading)
+            }
+            .buttonStyle(.borderless)
+            .disabled(model.isLoading)
+            .help("Rescan transcripts")
 
             Button {
                 model.copyToPasteboard()
@@ -130,9 +210,24 @@ struct WorkLogView: View {
             }
             .buttonStyle(.borderless)
             .disabled(model.day?.isEmpty ?? true)
-            .help("Copy this day as markdown")
+            .help("Copy this day")
         }
         .font(.system(size: 11))
+    }
+
+    /// Drawn inline rather than in a compact picker's own calendar window: the
+    /// popover is `.transient`, so the first click inside a separate window
+    /// would dismiss the whole panel before the date ever landed.
+    private var calendar: some View {
+        Panel {
+            MonthGrid(selected: model.date, activeDays: model.activeDays) { picked in
+                model.jump(to: picked)
+                // Collapse on choose. Leaving it open would push the day it was
+                // opened to see off the bottom of the panel.
+                withAnimation(.easeOut(duration: 0.15)) { pickingDate = false }
+            }
+        }
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     private func stepButton(_ symbol: String, days: Int, enabled: Bool) -> some View {
@@ -177,11 +272,32 @@ struct WorkLogView: View {
     private func repoPanel(_ group: RepoGroup) -> some View {
         Panel {
             VStack(alignment: .leading, spacing: 8) {
-                Text(group.repo)
-                    .font(Theme.label(11, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HStack(spacing: 6) {
+                    Text(group.repo)
+                        .font(Theme.label(11, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Spacer(minLength: 0)
+
+                    // One repo at a time is the common case: a standup note is
+                    // about the thing you worked on, not about every checkout
+                    // you happened to touch.
+                    Button {
+                        model.copyToPasteboard(group)
+                        copiedRepo = group.repo
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.4))
+                            if copiedRepo == group.repo { copiedRepo = nil }
+                        }
+                    } label: {
+                        Image(systemName: copiedRepo == group.repo ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 10))
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Copy \(group.repo)")
+                }
 
                 VStack(alignment: .leading, spacing: 7) {
                     // Positional identity: `sessionID` is empty for transcripts

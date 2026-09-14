@@ -49,7 +49,11 @@ final class WorkLogStore: @unchecked Sendable {
 
         let base = cacheDirectory ?? SupportDirectory.url
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        self.indexURL = base.appendingPathComponent("worklog-index.json")
+        // Versioned: the cache stores parsed *results*, so a change to what the
+        // parser extracts leaves every untouched transcript holding the old
+        // answer forever. Bumping the name discards those in one step.
+        self.indexURL = base.appendingPathComponent("worklog-index-v2.json")
+        try? FileManager.default.removeItem(at: base.appendingPathComponent("worklog-index.json"))
         self.timeZone = timeZone
 
         if let data = try? Data(contentsOf: indexURL),
@@ -68,6 +72,17 @@ final class WorkLogStore: @unchecked Sendable {
             let key = Self.dayKey(date, timeZone: timeZone)
             let sessions = index.values.compactMap(\.session).filter { $0.days.contains(key) }
             return WorkDay(date: date, groups: Self.group(sessions, on: key))
+        }
+    }
+
+    /// Every `yyyy-MM-dd` key that has at least one session on it, across the
+    /// whole index — what the calendar dots the month view against. Rescans
+    /// first, same as `day(_:)`, so a transcript that just grew a new day
+    /// shows up without waiting for that day to be the one on screen.
+    func activeDays() -> Set<String> {
+        queue.sync {
+            refreshIndexLocked()
+            return Set(index.values.compactMap(\.session).flatMap(\.days))
         }
     }
 
@@ -175,21 +190,27 @@ final class WorkLogStore: @unchecked Sendable {
 
     // MARK: - Export
 
-    /// The visible day as markdown, for the Copy button — repo headings, one
+    /// The visible day as plain text, for the Copy buttons — the repo name, one
     /// bullet per session, todos indented beneath.
-    static func markdown(_ day: WorkDay, timeZone: TimeZone = .current) -> String {
-        let heading = DateFormatter()
-        heading.timeZone = timeZone
-        heading.dateFormat = "EEEE d MMMM yyyy"
+    ///
+    /// Deliberately not markdown: this gets pasted into ordinary text fields —
+    /// a standup box, a chat message — where `##` and `-` stay on screen as
+    /// literal punctuation instead of turning into headings and bullets. The
+    /// markers here are the ones the panel itself draws, so the paste looks
+    /// like what was copied.
+    ///
+    /// No date line either: whatever it lands in already says which day it is.
+    static func plainText(_ day: WorkDay) -> String {
+        day.groups.map(plainText).joined(separator: "\n")
+    }
 
-        var lines = ["# \(heading.string(from: day.date))"]
-        for group in day.groups {
-            lines.append("")
-            lines.append("## \(group.repo)")
-            for session in group.sessions {
-                lines.append("- \(session.title)")
-                for todo in session.todos { lines.append("  - \(todo)") }
-            }
+    /// One repo's sessions, same shape as a slice of the whole day, so copying
+    /// a single panel and copying everything produce consistent text.
+    static func plainText(_ group: RepoGroup) -> String {
+        var lines = [group.repo]
+        for session in group.sessions {
+            lines.append("• \(session.title)")
+            for todo in session.todos { lines.append("   – \(todo)") }
         }
         return lines.joined(separator: "\n") + "\n"
     }

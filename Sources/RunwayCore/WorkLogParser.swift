@@ -5,7 +5,8 @@ struct WorkLogSession: Codable, Equatable {
     let sessionID: String
     /// Working directory the session ran in — the repo it belongs to.
     let cwd: String
-    /// Claude Code's own generated session title. The bullet.
+    /// The session's displayed name: the one the user renamed it to if there
+    /// is one, else Claude Code's generated title. The bullet.
     let title: String
     /// Completed todos, in the order they were first completed. Sub-bullets.
     let todos: [String]
@@ -50,8 +51,11 @@ extension WorkLogSession {
 ///
 /// The bullets come from two entry types Claude Code already writes, so the app
 /// never has to call a model to summarize anything:
-///   - `ai-title`  — a few-word title, present in every session
-///   - `TodoWrite` — task-shaped todo text, present in the long ones
+///   - `ai-title`     — a few-word title, present in every session
+///   - `custom-title` — the title after the user renamed the session; when one
+///                      is present it is what Claude Code itself displays, so
+///                      it wins over the generated one
+///   - `TodoWrite`    — task-shaped todo text, present in the long ones
 enum WorkLogParser {
 
     /// Returns nil when the transcript has no title or no timestamped activity —
@@ -59,7 +63,8 @@ enum WorkLogParser {
     static func parse(_ transcript: String, timeZone: TimeZone = .current) -> WorkLogSession? {
         var sessionID = ""
         var cwd = ""
-        var title: String?
+        var aiTitle: String?
+        var customTitle: String?
         var first: Date?
         var last: Date?
         var dayKeys: [String] = []
@@ -85,11 +90,17 @@ enum WorkLogParser {
             if let id = object["sessionId"] as? String, !id.isEmpty { sessionID = id }
             if let dir = object["cwd"] as? String, !dir.isEmpty { cwd = dir }
 
-            // Last title wins. They're identical in practice; this is the safe
-            // rule if Claude Code ever starts revising them mid-session.
-            if object["type"] as? String == "ai-title",
-               let value = object["aiTitle"] as? String, !value.isEmpty {
-                title = value
+            // Last title wins. Renames append a fresh line rather than
+            // rewriting the old one, so the tail of the file is the current
+            // name — and a user-chosen name outranks the generated one however
+            // the two are ordered.
+            switch object["type"] as? String {
+            case "ai-title":
+                if let value = object["aiTitle"] as? String, !value.isEmpty { aiTitle = value }
+            case "custom-title":
+                if let value = object["customTitle"] as? String, !value.isEmpty { customTitle = value }
+            default:
+                break
             }
 
             if let stamp = object["timestamp"] as? String, let date = Self.date(from: stamp) {
@@ -124,7 +135,8 @@ enum WorkLogParser {
             }
         }
 
-        guard let title, let first, let last, !dayKeys.isEmpty else { return nil }
+        guard let title = customTitle ?? aiTitle,
+              let first, let last, !dayKeys.isEmpty else { return nil }
 
         return WorkLogSession(
             sessionID: sessionID,
