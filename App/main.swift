@@ -158,23 +158,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// Installing a new version next to an old one (rather than over it) leaves
     /// two apps with the same bundle ID, and Spotlight or Launch at login may
     /// keep opening the old one. Offer to trash the others.
+    ///
+    /// Only real installs count: the copy inside a mounted DMG (or any other
+    /// read-only volume) can't be trashed and would otherwise be reported on
+    /// every launch. Declining is remembered for that exact set of copies.
     private func offerToRemoveOtherCopies() {
         let me = Bundle.main.bundleURL.standardizedFileURL.resolvingSymlinksInPath()
         let others = NSWorkspace.shared
             .urlsForApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
             .map { $0.standardizedFileURL.resolvingSymlinksInPath() }
-            .filter { $0 != me && !$0.path.contains("/.Trash/") && FileManager.default.fileExists(atPath: $0.path) }
+            .filter { url in
+                guard url != me, !url.path.contains("/.Trash/"),
+                      FileManager.default.fileExists(atPath: url.path) else { return false }
+                let readOnly = (try? url.resourceValues(forKeys: [.volumeIsReadOnlyKey]))?.volumeIsReadOnly ?? true
+                // App Translocation runs quarantined apps from a read-only
+                // mirror under /private/var/folders; that isn't an install either.
+                return !readOnly && !url.path.contains("/AppTranslocation/")
+            }
+            .sorted { $0.path < $1.path }
         guard !others.isEmpty else { return }
+
+        let declinedKey = "declinedDuplicateCopies"
+        let signature = others.map(\.path).joined(separator: "|")
+        if UserDefaults.standard.string(forKey: declinedKey) == signature { return }
+
+        func version(_ url: URL) -> String {
+            Bundle(url: url)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+        }
 
         let alert = NSAlert()
         alert.messageText = "Another copy of Claude Runway is installed"
-        alert.informativeText = "This version is running from:\n\(me.path)\n\nOther copies:\n"
-            + others.map(\.path).joined(separator: "\n")
-            + "\n\nMove the other copies to the Trash so only this version remains?"
+        alert.informativeText = "Running now: version \(appVersion)\n\(me.path)\n\nOther copies:\n"
+            + others.map { "version \(version($0))\n\($0.path)" }.joined(separator: "\n\n")
+            + "\n\nMove the other copies to the Trash so only the running version remains?"
         alert.addButton(withTitle: "Move to Trash")
         alert.addButton(withTitle: "Keep Them")
         NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            UserDefaults.standard.set(signature, forKey: declinedKey)
+            return
+        }
         for url in others {
             try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
         }

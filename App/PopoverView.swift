@@ -287,6 +287,10 @@ struct PopoverView: View {
                     .help("Replace session key")
             }
 
+            Text("v\(appVersion)")
+                .foregroundStyle(.secondary)
+                .help("Claude Runway \(appVersion)")
+
             Button(action: onQuit) { Image(systemName: "power") }
                 .buttonStyle(.borderless)
                 .help("Quit")
@@ -391,3 +395,6 @@ struct SparkMarkShape: Shape {
         Path(SparkMark.path(in: rect))
     }
 }
+
+/// Version stamped into Info.plist at build time ("1.0" for local builds).
+let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"

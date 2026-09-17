@@ -47,7 +47,10 @@ New test files must be added to the `swiftc` list in `run-tests.sh`.
   symlink, so dragging replaces an existing install instead of adding a second
   copy. `package.sh` lays out the window by scripting Finder (needs a GUI
   session; works on GitHub macOS runners). On launch the app offers to trash
-  other installed copies.
+  other installed copies — ignoring read-only volumes (a mounted DMG) and App
+  Translocation, which can't be trashed and would otherwise re-prompt forever.
+- **Don't leave test builds lying around** (e.g. `build.sh build/x`): Launch
+  Services registers them and they show up as duplicate installs.
 - Test fixtures are recorded API responses with past dates — don't add logic to
   the parser that depends on the current time.
 
