@@ -245,12 +245,12 @@ It reads the session transcripts Claude Code already writes to
 `~/.claude/projects/`, and groups the day by the repo each session ran in:
 
 ```
-skuscraper
-  • Build WePlayHandball crawler for Germany
-agent-accounts-support
-  • Apply PR 200 fix to accounts agent
-      – Port ChromaHealthService + container wiring
-      – Port /health/chroma-reachability endpoint
+my-web-app
+  • Add dark mode to settings page
+billing-service
+  • Fix invoice rounding bug
+      – Round totals at the line-item level
+      – Add regression test for multi-currency invoices
 ```
 
 Every line was written by Claude Code as it worked — the bullet is the session's

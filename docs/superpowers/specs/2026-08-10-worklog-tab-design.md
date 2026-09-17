@@ -40,13 +40,13 @@ sub-bullets when the session has them, so multi-task sessions split themselves
 and short sessions stay one clean line.
 
 ```
-skuscraper
-  • Build WePlayHandball crawler for Germany
-  • Build crawler for Freedom homeware retailer
-agent-it-support
-  • Add Jira project picker
-      – Backend: config_options hook + generic route
-      – Frontend: project picker with all five states
+my-web-app
+  • Add dark mode to settings page
+  • Fix login redirect loop
+billing-service
+  • Add CSV export for invoices
+      – Backend: export endpoint
+      – Frontend: export button with loading state
 ```
 
 ## Architecture
