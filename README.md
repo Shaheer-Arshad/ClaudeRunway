@@ -99,6 +99,10 @@ It's an `LSUIElement` app, so it has no Dock icon. To launch it after quitting,
 find "Claude Runway" in Spotlight or `~/Applications`, or drag it to your Dock.
 The popover's **Launch at login** toggle avoids the question entirely.
 
+> **Next step: live updates.** Out of the box the app refreshes every 15 minutes.
+> For updates every 60 seconds, paste in your claude.ai session key — see
+> [Getting a session key](#getting-a-session-key). It takes about a minute.
+
 ### Cutting a release
 
 Tagging publishes the zip; [`.github/workflows/release.yml`](.github/workflows/release.yml)
@@ -124,11 +128,42 @@ The app works with **no configuration at all** — it falls back to the OAuth to
 Claude Code already stored when you signed in. But that path is slow (a 15-minute
 poll), so if you want 60-second updates, give it a session key.
 
-1. Open <https://claude.ai> in your browser and make sure you're logged in.
-2. Open DevTools (`⌥⌘I` in Chrome/Edge, `⌥⌘C` in Safari with the develop menu on).
-3. Go to **Application** → **Storage** → **Cookies** → `https://claude.ai`.
-4. Find the row named **`sessionKey`** and copy its **Value**.
-5. Click the menu bar item and paste it into the **Add a session key** field.
+The session key is a cookie claude.ai sets in your browser when you log in. You
+copy it out of the browser's developer tools once and paste it into the app.
+
+**Chrome, Edge, Brave, Arc**
+
+1. Open <https://claude.ai> and make sure you're logged in.
+2. Press `⌥⌘I` (or right-click the page → **Inspect**) to open DevTools.
+3. Click the **Application** tab. If you can't see it, click `»` at the end of
+   the tab row.
+4. In the left sidebar, expand **Storage → Cookies** and click
+   `https://claude.ai`.
+5. Find the row whose **Name** is `sessionKey`. Double-click its **Value**
+   cell, press `⌘A` then `⌘C` to copy it. It starts with `sk-ant-sid`.
+
+**Safari**
+
+1. Turn on the developer tools once: **Safari → Settings → Advanced →** tick
+   **Show features for web developers**.
+2. Open <https://claude.ai> and make sure you're logged in.
+3. Press `⌥⌘I` to open Web Inspector and click the **Storage** tab.
+4. Under **Cookies**, select `claude.ai`, find `sessionKey`, and double-click
+   its **Value** to select and copy it.
+
+**Firefox**
+
+1. Open <https://claude.ai> and make sure you're logged in.
+2. Press `⌥⌘I` and click the **Storage** tab.
+3. Expand **Cookies**, select `https://claude.ai`, and find `sessionKey`.
+4. Double-click its **Value** and copy it.
+
+**Then, in Claude Runway**
+
+1. Click the spark in the menu bar to open the popover.
+2. Paste the key into the **Add a session key** field and click **Save**.
+3. Within a few seconds the numbers switch to the live source and refresh every
+   60 seconds from then on.
 
 Paste the bare value, `sessionKey=…`, or the whole cookie header — all three are
 accepted and normalised. A value that doesn't start with `sk-ant-sid` is rejected
@@ -214,8 +249,17 @@ own `ai-title`, the sub-bullets are todos it marked completed. **No model is
 called to produce any of it**, so opening the tab costs nothing against the
 limits the rest of the app is watching.
 
-Arrows step back a day at a time. **Copy** puts the visible day on the clipboard
-as markdown, for a standup note or a timesheet. The view is read-only. Sessions
+Arrows step a day at a time. Tap the day label to open a month calendar and jump
+straight to any date; days that have sessions are marked with a dot. The
+**refresh** button rescans your transcripts on demand.
+
+**Copy** puts the visible day on the clipboard as plain text, ready for a standup
+note or a timesheet field. Each repo also has its own Copy button if you only
+need one project. The date is left out, since wherever you paste it already has
+one. The view is read-only.
+
+If you rename a session in Claude Code, the Work tab shows your name for it
+instead of the generated title. Sessions
 run from `~/Desktop` or `~` rather than a project are labelled `Desktop (no repo)`
 rather than dressed up as one.
 
@@ -299,7 +343,7 @@ privately if it's sensitive.
 ## Development
 
 ```sh
-./run-tests.sh        # 169 assertions, no XCTest required
+./run-tests.sh        # 177 checks, no XCTest required
 ./tools/probe.sh      # raw OAuth response — mind the rate limit
 ./tools/render.sh     # menu bar item across usage states, both appearances
 ./tools/make-icon.sh  # regenerate Resources/AppIcon.icns after changing the mark
