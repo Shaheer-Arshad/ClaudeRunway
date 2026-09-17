@@ -36,10 +36,13 @@ New test files must be added to the `swiftc` list in `run-tests.sh`.
 - **Notifications** fire once each at 85%, 90%, 97% per bucket per reset window
   (`Notifier`). `resets_at` drifts between polls, so windows are matched with a
   30-minute tolerance, not by exact timestamp.
-- **Keychain reads go through `/usr/bin/security`**, not `SecItemCopyMatching`.
-  The app is ad-hoc signed, so its signature changes every release and a direct
-  read would re-prompt for the login password after each update. The token is
-  cached in memory until expiry. User-facing text must not talk about "tokens"
+- **All keychain secret reads and writes go through `SecurityCLI`**
+  (`/usr/bin/security`), never `SecItemCopyMatching`/`SecItemAdd`. The app is
+  ad-hoc signed, so its signature changes every release and a grant to the app
+  itself would re-prompt for the login password after each update. This covers
+  both Claude Code's item and our own `ClaudeRunway-session`. Secrets are passed
+  on stdin (`security -i`), never argv. Both are cached in memory after the first
+  read. Attribute-only queries (no secret) are fine through the framework. User-facing text must not talk about "tokens"
   being saved — say "Claude Code sign-in" instead.
 - **Menu bar app has no visible menu**, so edit shortcuts (Cmd-V etc.) only work
   because `setUpEditMenu()` installs a hidden Edit menu. Keep it.

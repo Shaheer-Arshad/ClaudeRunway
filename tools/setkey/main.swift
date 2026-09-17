@@ -7,7 +7,7 @@ import Foundation
 // those would leave a full-account credential in shell history and expose it to
 // any other process of the same user via `ps -E`.
 //
-//   swiftc Sources/RunwayCore/{SessionKeyStore,UsageParser,UsageModel}.swift \
+//   swiftc Sources/RunwayCore/{SessionKeyStore,SecurityCLI,UsageParser,UsageModel}.swift \
 //          tools/setkey/main.swift -o /tmp/setkey && pbpaste | /tmp/setkey
 
 guard let line = readLine(strippingNewline: true), !line.isEmpty else {

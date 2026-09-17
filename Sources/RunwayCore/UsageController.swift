@@ -28,7 +28,8 @@ final class UsageController: ObservableObject {
     @Published private(set) var recentSeries: [HistoryStore.Sample] = []
     /// True once the session key has been rejected — the UI prompts for a new one.
     @Published private(set) var sessionExpired = false
-    @Published private(set) var hasSessionKey = SessionKeyStore.load() != nil
+    /// Set in `start()`, after any keychain prompt has been explained.
+    @Published private(set) var hasSessionKey = false
 
     var transport: Transport {
         RefreshGate.transport(hasSessionKey: hasSessionKey, sessionExpired: sessionExpired)
@@ -37,7 +38,9 @@ final class UsageController: ObservableObject {
     /// Called on the main actor right before the keychain is first read, so the
     /// app can explain the macOS password prompt before it appears. Runs once.
     var explainKeychainAccess: (() -> Void)?
-    private static let keychainExplainedKey = "keychainAccessExplained"
+    /// Bumped from "keychainAccessExplained" when the session key entry was
+    /// covered too, so existing users see the explanation once.
+    private static let keychainExplainedKey = "keychainAccessExplained.v2"
 
     private let history: HistoryStore
     private let notifier: Notifier
@@ -85,6 +88,10 @@ final class UsageController: ObservableObject {
     }
 
     func start() {
+        if SessionKeyStore.itemExists() { explainKeychainAccessOnce() }
+        hasSessionKey = SessionKeyStore.load() != nil
+        throttledUntil = throttles[transport]
+
         // A short heartbeat rather than one long timer: it recovers correctly
         // after sleep, where a long timer would simply fire late.
         ticker = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
@@ -97,6 +104,12 @@ final class UsageController: ObservableObject {
         ticker?.invalidate()
         ticker = nil
         inFlight?.cancel()
+    }
+
+    private func explainKeychainAccessOnce() {
+        guard !UserDefaults.standard.bool(forKey: Self.keychainExplainedKey) else { return }
+        UserDefaults.standard.set(true, forKey: Self.keychainExplainedKey)
+        explainKeychainAccess?()
     }
 
     // MARK: - Session key
@@ -157,10 +170,7 @@ final class UsageController: ObservableObject {
         log.info("fetching via \(active.label, privacy: .public) (\(reason, privacy: .public))")
         DebugLog.write("fetch [\(active.label)]: \(reason)")
 
-        if active == .oauth, !UserDefaults.standard.bool(forKey: Self.keychainExplainedKey) {
-            UserDefaults.standard.set(true, forKey: Self.keychainExplainedKey)
-            explainKeychainAccess?()
-        }
+        if active == .oauth { explainKeychainAccessOnce() }
 
         inFlight = Task { [weak self] in
             guard let self else { return }

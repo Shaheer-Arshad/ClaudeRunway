@@ -88,6 +88,10 @@ struct PopoverView: View {
             Text("Claude Runway")
                 .font(Theme.label(12, weight: .semibold))
 
+            Text("v\(appVersion)")
+                .font(Theme.label(9))
+                .foregroundStyle(.secondary)
+
             Spacer()
 
             Text(controller.transport.label)
@@ -272,6 +276,9 @@ struct PopoverView: View {
             .toggleStyle(.switch)
             .controlSize(.mini)
             .labelsHidden()
+            .help(launchAtLogin
+                  ? "Launch at login is on: Claude Runway opens automatically when you log in to your Mac."
+                  : "Launch at login is off: turn on to open Claude Runway automatically when you log in to your Mac.")
             .help("Launch at login")
 
             Button { controller.requestRefresh(reason: "manual", force: true) } label: {
@@ -286,10 +293,6 @@ struct PopoverView: View {
                     .buttonStyle(.borderless)
                     .help("Replace session key")
             }
-
-            Text("v\(appVersion)")
-                .foregroundStyle(.secondary)
-                .help("Claude Runway \(appVersion)")
 
             Button(action: onQuit) { Image(systemName: "power") }
                 .buttonStyle(.borderless)

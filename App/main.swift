@@ -138,15 +138,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let alert = NSAlert()
         alert.messageText = "macOS may ask for your Mac login password"
         alert.informativeText = """
-            Without a claude.ai session key, Claude Runway uses your existing Claude \
-            Code sign-in to check your usage. To do that, macOS needs your permission \
-            to let it access "Claude Code-credentials" in your keychain.
+            Claude Runway keeps your claude.ai session key in your keychain \
+            ("ClaudeRunway-session"). Without a session key, it uses your existing \
+            Claude Code sign-in instead ("Claude Code-credentials").
 
-            If macOS asks for a password, enter the password you use to log in to \
-            this Mac (not your Claude password) and click Always Allow so you \
-            aren't asked again.
-
-            To skip this entirely, add a session key in the popover.
+            macOS may ask for permission to open these. If it asks for a password, \
+            enter the password you use to log in to this Mac (not your Claude \
+            password) and click Always Allow. The request may come from "security", \
+            Apple's built-in keychain tool, so that the permission carries over to \
+            future updates and you aren't asked again.
             """
         alert.addButton(withTitle: "Continue")
         NSApp.activate(ignoringOtherApps: true)

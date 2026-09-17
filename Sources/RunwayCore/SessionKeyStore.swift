@@ -21,30 +21,26 @@ enum SessionKeyStore {
 
     // MARK: - Session key
 
+    /// Read from the keychain once, then served from memory: the web transport
+    /// polls every minute and each read could otherwise be a password prompt.
     static func load() -> String? {
-        if let key = read(from: service) { return key }
+        lock.lock(); defer { lock.unlock() }
+        if loaded { return cachedKey }
 
-        // Nothing under the current name: carry a pre-rename key forward, then
-        // drop the old item so this only happens once.
-        guard let legacy = read(from: legacyService) else { return nil }
-        if save(legacy) { delete(from: legacyService) }
-        return legacy
-    }
-
-    private static func read(from service: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data,
-              let key = String(data: data, encoding: .utf8),
-              !key.isEmpty
-        else { return nil }
+        var key = read(from: service)
+        if key == nil, let legacy = read(from: legacyService) {
+            // Carry a pre-rename key forward, then drop the old item.
+            key = legacy
+            if writeLocked(legacy) { SecurityCLI.delete(service: legacyService, account: account) }
+        } else if let found = key, !UserDefaults.standard.bool(forKey: migratedKey) {
+            // Items saved by versions before 1.1.4 were created by the app itself,
+            // so every update re-prompted. Re-create it through `security` once so
+            // later versions read it silently.
+            _ = writeLocked(found)
+        }
+        if key != nil { UserDefaults.standard.set(true, forKey: migratedKey) }
+        cachedKey = key
+        loaded = true
         return key
     }
 
@@ -52,40 +48,49 @@ enum SessionKeyStore {
     static func save(_ key: String) -> Bool {
         let trimmed = normalize(key)
         guard !trimmed.isEmpty else { return false }
-
-        // Simplest correct approach: delete then add, so this works whether or
-        // not an entry already exists.
-        delete()
-
-        let attrs: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: Data(trimmed.utf8),
-            // A menu bar app only reads this while someone is logged in and
-            // looking at the screen, so there is no reason to make the key
-            // readable in the window between boot and unlock. (Advisory on the
-            // legacy file-based keychain this app writes to; it becomes
-            // enforced if the bundle ever gains a real signing identity and
-            // moves to the data-protection keychain.)
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
-        ]
-        return SecItemAdd(attrs as CFDictionary, nil) == errSecSuccess
+        lock.lock(); defer { lock.unlock() }
+        let ok = writeLocked(trimmed)
+        if ok { UserDefaults.standard.set(true, forKey: migratedKey) }
+        return ok
     }
 
     static func delete() {
-        delete(from: service)
-        delete(from: legacyService)
+        lock.lock(); defer { lock.unlock() }
+        SecurityCLI.delete(service: service, account: account)
+        SecurityCLI.delete(service: legacyService, account: account)
+        cachedKey = nil
+        loaded = true
     }
 
-    private static func delete(from service: String) {
+    /// True if a session key item exists. Reads attributes only, so it never
+    /// prompts — used to decide whether to explain a prompt before it appears.
+    static func itemExists() -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+            kSecReturnAttributes as String: true,
         ]
-        SecItemDelete(query as CFDictionary)
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
     }
+
+    private static func read(from service: String) -> String? {
+        guard case let (data?, _) = SecurityCLI.read(service: service, account: account),
+              let key = String(data: data, encoding: .utf8), !key.isEmpty
+        else { return nil }
+        return key
+    }
+
+    private static func writeLocked(_ key: String) -> Bool {
+        let ok = SecurityCLI.write(service: service, account: account, value: key)
+        if ok { cachedKey = key; loaded = true }
+        return ok
+    }
+
+    private static let migratedKey = "sessionKeyStoredViaSecurityTool"
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var loaded = false
+    nonisolated(unsafe) private static var cachedKey: String?
 
     /// Accepts what a user realistically pastes: the bare key, `sessionKey=...`,
     /// or a whole cookie header containing it among other cookies.

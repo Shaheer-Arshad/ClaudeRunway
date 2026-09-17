@@ -87,35 +87,11 @@ enum Keychain {
         }
     }
 
-    /// Reads the secret through Apple's `/usr/bin/security` tool rather than
-    /// `SecItemCopyMatching` from this process.
-    ///
-    /// Keychain access grants ("Always Allow") are tied to the code signature of
-    /// whoever asks. This app is ad-hoc signed, so every new version has a new
-    /// signature and macOS would ask for the login password again after each
-    /// update. `security` is Apple-signed and never changes, and Claude Code itself
-    /// writes this item with it, so it is normally already trusted: at most one
-    /// prompt, ever.
+    /// Through `SecurityCLI` so an app update doesn't re-prompt for the login
+    /// password. Claude Code writes this item with `security` itself, so it is
+    /// normally already trusted.
     private static func itemData(account: String) -> (Data?, OSStatus) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        process.arguments = ["find-generic-password", "-s", service, "-a", account, "-w"]
-        let out = Pipe()
-        process.standardOutput = out
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return (nil, errSecNotAvailable) }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        switch process.terminationStatus {
-        case 0:
-            // `-w` appends a newline.
-            var trimmed = data
-            while trimmed.last == 0x0A { trimmed.removeLast() }
-            return trimmed.isEmpty ? (nil, errSecItemNotFound) : (trimmed, errSecSuccess)
-        case 44: return (nil, errSecItemNotFound)
-        default: return (nil, errSecAuthFailed)  // denied or cancelled at the prompt
-        }
+        SecurityCLI.read(service: service, account: account)
     }
 
     /// The bearer token to send to the usage endpoint.

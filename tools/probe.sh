@@ -10,5 +10,5 @@ cd "$(dirname "$0")/.."
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 
-swiftc -O Sources/RunwayCore/Keychain.swift tools/probe/main.swift -o "$OUT/probe"
+swiftc -O Sources/RunwayCore/Keychain.swift Sources/RunwayCore/SecurityCLI.swift tools/probe/main.swift -o "$OUT/probe"
 "$OUT/probe"
