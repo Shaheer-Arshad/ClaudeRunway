@@ -34,6 +34,11 @@ final class UsageController: ObservableObject {
         RefreshGate.transport(hasSessionKey: hasSessionKey, sessionExpired: sessionExpired)
     }
 
+    /// Called on the main actor right before the keychain is first read, so the
+    /// app can explain the macOS password prompt before it appears. Runs once.
+    var explainKeychainAccess: (() -> Void)?
+    private static let keychainExplainedKey = "keychainAccessExplained"
+
     private let history: HistoryStore
     private let notifier: Notifier
     private let webFetcher: () async throws -> UsageSnapshot
@@ -151,6 +156,11 @@ final class UsageController: ObservableObject {
         isRefreshing = true
         log.info("fetching via \(active.label, privacy: .public) (\(reason, privacy: .public))")
         DebugLog.write("fetch [\(active.label)]: \(reason)")
+
+        if active == .oauth, !UserDefaults.standard.bool(forKey: Self.keychainExplainedKey) {
+            UserDefaults.standard.set(true, forKey: Self.keychainExplainedKey)
+            explainKeychainAccess?()
+        }
 
         inFlight = Task { [weak self] in
             guard let self else { return }

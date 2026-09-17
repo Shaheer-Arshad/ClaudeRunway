@@ -87,18 +87,35 @@ enum Keychain {
         }
     }
 
+    /// Reads the secret through Apple's `/usr/bin/security` tool rather than
+    /// `SecItemCopyMatching` from this process.
+    ///
+    /// Keychain access grants ("Always Allow") are tied to the code signature of
+    /// whoever asks. This app is ad-hoc signed, so every new version has a new
+    /// signature and macOS would ask for the login password again after each
+    /// update. `security` is Apple-signed and never changes, and Claude Code itself
+    /// writes this item with it, so it is normally already trusted: at most one
+    /// prompt, ever.
     private static func itemData(account: String) -> (Data?, OSStatus) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return (nil, status) }
-        return (data, status)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", service, "-a", account, "-w"]
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return (nil, errSecNotAvailable) }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        switch process.terminationStatus {
+        case 0:
+            // `-w` appends a newline.
+            var trimmed = data
+            while trimmed.last == 0x0A { trimmed.removeLast() }
+            return trimmed.isEmpty ? (nil, errSecItemNotFound) : (trimmed, errSecSuccess)
+        case 44: return (nil, errSecItemNotFound)
+        default: return (nil, errSecAuthFailed)  // denied or cancelled at the prompt
+        }
     }
 
     /// The bearer token to send to the usage endpoint.
@@ -107,12 +124,28 @@ enum Keychain {
     /// endpoint's rate limit is shared with Claude Code itself, so spending a
     /// request to learn something the stored blob already says is a waste of
     /// the user's quota.
+    ///
+    /// The token is kept in memory until it expires, so the keychain is read
+    /// once per token rather than once per poll. `forgetCachedToken()` drops it
+    /// when the server rejects it (Claude Code may have rotated it).
     static func accessToken(now: Date = Date()) throws -> String {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        if let cached, cached.expiresAt.map({ $0 > now }) ?? true { return cached.token }
+
         let data = try rawCredentials()
         let (token, expiresAt) = try credential(in: data)
         if let expiresAt, expiresAt <= now { throw Error.expired }
+        cached = (token, expiresAt)
         return token
     }
+
+    static func forgetCachedToken() {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        cached = nil
+    }
+
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var cached: (token: String, expiresAt: Date?)?
 
     /// The token alone, for probing whether a blob is the one we want.
     private static func token(in data: Data) throws -> String {

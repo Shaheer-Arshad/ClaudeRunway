@@ -58,6 +58,6 @@ enum Urgency {
         }
     }
 
-    /// The single threshold the 90% notification fires on.
+    /// Critical-urgency boundary (notification thresholds live in Notifier).
     static let notifyThreshold: Double = 90
 }

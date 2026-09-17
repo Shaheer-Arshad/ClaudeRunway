@@ -1,12 +1,17 @@
 import Foundation
 import UserNotifications
 
-/// Fires a single notification per limit per reset window once usage crosses 90%.
+/// Fires at most one notification per threshold (85%, 90%, 97%) per limit per
+/// reset window.
 ///
-/// Dedupe key is bucket + reset timestamp, persisted in UserDefaults so a
-/// relaunch (or the 15-minute poll seeing the same high number again) doesn't
-/// re-notify. When the window rolls over, `resets_at` changes and the key with it.
+/// State is persisted in UserDefaults as bucket key -> (reset time, thresholds
+/// already fired), so a relaunch or repeated polls don't re-notify. `resets_at`
+/// can drift by seconds-to-minutes between polls, so a window only counts as
+/// new when its reset moves by more than `windowTolerance`.
 final class Notifier {
+    static let thresholds: [Int] = [85, 90, 97]
+    private static let windowTolerance: TimeInterval = 30 * 60
+
     private let defaultsKey = "notifiedWindows"
     private let defaults: UserDefaults
     private let deliver: (String, String) -> Void
@@ -23,25 +28,34 @@ final class Notifier {
     }
 
     func evaluate(_ snapshot: UsageSnapshot) {
-        var notified = Set(defaults.stringArray(forKey: defaultsKey) ?? [])
-        let liveKeys = Set(snapshot.buckets.map(windowKey))
+        let stored = defaults.dictionary(forKey: defaultsKey) as? [String: [String: Any]] ?? [:]
+        var next: [String: [String: Any]] = [:]
 
-        for bucket in snapshot.buckets where bucket.percent >= Urgency.notifyThreshold {
-            let key = windowKey(bucket)
-            guard !notified.contains(key) else { continue }
-            notified.insert(key)
-            deliver("Claude usage at \(Int(bucket.percent))%",
-                    "\(bucket.displayName) is nearly exhausted.")
+        for bucket in snapshot.buckets {
+            let reset = bucket.resetsAt?.timeIntervalSince1970 ?? 0
+            var fired: Set<Int> = []
+            if let prev = stored[bucket.key],
+               let prevReset = prev["reset"] as? Double,
+               abs(prevReset - reset) <= Notifier.windowTolerance {
+                fired = Set(prev["fired"] as? [Int] ?? [])
+            }
+
+            // Only announce the highest newly crossed threshold, so a jump from
+            // 80% to 98% between polls produces one notification, not three.
+            let crossed = Notifier.thresholds.filter { bucket.percent >= Double($0) }
+            if let top = crossed.last, !fired.contains(top) {
+                deliver("Claude usage at \(Int(bucket.percent))%",
+                        top >= 97 ? "\(bucket.displayName) is nearly exhausted."
+                                  : "\(bucket.displayName) passed \(top)%.")
+            }
+            fired.formUnion(crossed)
+
+            // Buckets missing from the snapshot are dropped, so state can't grow
+            // without bound.
+            next[bucket.key] = ["reset": reset, "fired": fired.sorted()]
         }
 
-        // Drop keys for windows that no longer exist so the list can't grow
-        // without bound across weeks of resets.
-        defaults.set(Array(notified.intersection(liveKeys)), forKey: defaultsKey)
-    }
-
-    private func windowKey(_ bucket: LimitBucket) -> String {
-        let reset = bucket.resetsAt.map { String(Int($0.timeIntervalSince1970)) } ?? "none"
-        return "\(bucket.key)@\(reset)"
+        defaults.set(next, forKey: defaultsKey)
     }
 
     private static func postSystemNotification(title: String, body: String) {

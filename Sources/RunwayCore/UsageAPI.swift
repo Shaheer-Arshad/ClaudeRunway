@@ -30,7 +30,9 @@ enum UsageAPI {
 
         switch http.statusCode {
         case 200: return try UsageParser.parse(data, fetchedAt: Date())
-        case 401, 403: throw UsageError.unauthorized
+        case 401, 403:
+            Keychain.forgetCachedToken()
+            throw UsageError.unauthorized
         case 429: throw UsageError.rateLimited(retryAfter: UsageParser.retryAfter(from: http))
         default: throw UsageError.http(http.statusCode)
         }

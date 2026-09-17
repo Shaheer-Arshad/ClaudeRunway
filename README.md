@@ -51,6 +51,10 @@ Grab the latest **ClaudeRunway-*.zip** from
 and drag `ClaudeRunway.app` to your Applications folder. Universal binary —
 Apple Silicon and Intel.
 
+**Updating:** quit Claude Runway, then drag the new `ClaudeRunway.app` into the
+same folder as the old one and choose **Replace**. If the app finds another copy
+installed somewhere else, it offers to move that copy to the Trash.
+
 **The first launch will be blocked.** Anything downloaded through a browser
 carries macOS's quarantine flag, and this app is ad-hoc signed rather than
 notarised, so Gatekeeper stops it: *"ClaudeRunway can't be opened because Apple

@@ -48,7 +48,7 @@ jobs:
 
       - name: Verify the bundle is universal and signed
         run: |
-          APP="$HOME/ClaudeRunway-check/Claude Runway/ClaudeRunway.app"
+          APP="$HOME/ClaudeRunway-check/ClaudeRunway.app"
           mkdir -p "$HOME/ClaudeRunway-check"
           ditto -x -k "dist/ClaudeRunway-${{ steps.v.outputs.version }}.zip" "$HOME/ClaudeRunway-check"
           lipo -archs "$APP/Contents/MacOS/ClaudeRunway"
@@ -61,6 +61,7 @@ jobs:
         run: |
           printf '%s\n' \
             "Download **ClaudeRunway-$VERSION.zip**, unzip, and drag ClaudeRunway.app to Applications." \
+            "Updating: quit Claude Runway first, then drag the new app over the old one and choose **Replace**." \
             "" \
             "The app is ad-hoc signed (no paid Apple Developer account), so the first launch is blocked:" \
             "macOS says it cannot check it for malicious software. Open **System Settings -> Privacy &" \

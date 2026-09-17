@@ -78,8 +78,9 @@ enum UsageParser {
                            resetsAt: date(from: entry["resets_at"]))
     }
 
-    /// Values have been observed as 0–100. Guard against a 0–1 fraction in case
-    /// the representation ever differs between fields.
+    /// Values are always 0–100. Don't try to detect a 0–1 fraction: a genuine 1%
+    /// (the first reading of a fresh window) is indistinguishable from 1.0 and
+    /// was being shown as 100%.
     static func percentValue(_ raw: Any?) -> Double? {
         let value: Double
         switch raw {
@@ -89,8 +90,7 @@ enum UsageParser {
         default: return nil
         }
         guard value.isFinite, value >= 0 else { return nil }
-        let normalized = value <= 1 ? value * 100 : value
-        return min(normalized, 100)
+        return min(value, 100)
     }
 
     static func date(from raw: Any?) -> Date? {

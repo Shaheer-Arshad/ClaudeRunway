@@ -67,7 +67,8 @@ T.test("weekly picks the most-consumed variant") {
 T.test("percent normalization") {
     T.equal(UsageParser.percentValue(11), 11, "0-100 ints pass through")
     T.equal(UsageParser.percentValue(7.5), 7.5, "doubles pass through")
-    T.equal(UsageParser.percentValue(0.62), 62, "a 0-1 fraction is scaled up")
+    T.equal(UsageParser.percentValue(1), 1, "1% stays 1%, not 100% (fresh window)")
+    T.equal(UsageParser.percentValue(0.5), 0.5, "sub-1 values are percents, not fractions")
     T.equal(UsageParser.percentValue(150), 100, "clamped to 100")
     T.equal(UsageParser.percentValue("33"), 33, "numeric strings parse")
     T.expect(UsageParser.percentValue(nil) == nil, "nil rejected")
@@ -155,7 +156,7 @@ T.test("backoff progression caps at an hour") {
     b = RefreshGate.nextBackoff(current: b); T.equal(b, 3600, "stays capped")
 }
 
-T.test("notifies once per limit per reset window") {
+T.test("notifies once per threshold per reset window") {
     let suite = "test.notifier.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!
     var sent: [String] = []
@@ -169,18 +170,27 @@ T.test("notifies once per limit per reset window") {
     }
 
     notifier.evaluate(snapshot(45, resetsAt: window))
-    T.equal(sent.count, 0, "no notification below the threshold")
+    T.equal(sent.count, 0, "no notification below 85%")
+
+    notifier.evaluate(snapshot(86, resetsAt: window))
+    T.equal(sent.count, 1, "crossing 85% notifies")
+
+    // resets_at jitters between polls; that must not look like a new window.
+    notifier.evaluate(snapshot(88, resetsAt: window.addingTimeInterval(7)))
+    T.equal(sent.count, 1, "still between 85 and 90 with drifting reset does not re-notify")
 
     notifier.evaluate(snapshot(91, resetsAt: window))
-    T.equal(sent.count, 1, "crossing 90% notifies")
+    notifier.evaluate(snapshot(92, resetsAt: window))
+    notifier.evaluate(snapshot(95, resetsAt: window))
+    T.equal(sent.count, 2, "90% notifies exactly once")
 
-    // The 15-minute poll will keep seeing the same high number.
-    notifier.evaluate(snapshot(93, resetsAt: window))
-    T.equal(sent.count, 1, "still-high usage in the same window does not re-notify")
+    notifier.evaluate(snapshot(97, resetsAt: window))
+    notifier.evaluate(snapshot(99, resetsAt: window))
+    notifier.evaluate(snapshot(100, resetsAt: window))
+    T.equal(sent.count, 3, "97% notifies exactly once, nothing after")
 
-    // A new window means resets_at changed.
-    notifier.evaluate(snapshot(95, resetsAt: window.addingTimeInterval(18000)))
-    T.equal(sent.count, 2, "a new reset window notifies again")
+    notifier.evaluate(snapshot(98, resetsAt: window.addingTimeInterval(18000)))
+    T.equal(sent.count, 4, "a new reset window notifies again, once for the top threshold")
 
     defaults.removePersistentDomain(forName: suite)
 }
@@ -198,8 +208,8 @@ T.test("dedupe keys do not accumulate across windows") {
             fetchedAt: Date()))
     }
 
-    let stored = defaults.stringArray(forKey: "notifiedWindows") ?? []
-    T.equal(stored.count, 1, "only keys for currently-live windows are retained")
+    let stored = defaults.dictionary(forKey: "notifiedWindows") ?? [:]
+    T.equal(stored.count, 1, "only state for currently-live buckets is retained")
 
     defaults.removePersistentDomain(forName: suite)
 }

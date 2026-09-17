@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         setUpStatusItem()
         setUpPopover()
         observeController()
+        controller.explainKeychainAccess = { Self.showKeychainExplanation() }
+        offerToRemoveOtherCopies()
         observeSystemEvents()
         watchClaudeProjects()
         controller.start()
@@ -103,6 +105,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             NotificationCenter.default.post(name: .claudeActivity, object: nil)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
+        }
+    }
+
+    // MARK: - Keychain explanation
+
+    private static func showKeychainExplanation() {
+        let alert = NSAlert()
+        alert.messageText = "macOS may ask for your Mac login password"
+        alert.informativeText = """
+            Without a claude.ai session key, Claude Runway uses your existing Claude \
+            Code sign-in to check your usage. To do that, macOS needs your permission \
+            to let it access "Claude Code-credentials" in your keychain.
+
+            If macOS asks for a password, enter the password you use to log in to \
+            this Mac (not your Claude password) and click Always Allow so you \
+            aren't asked again.
+
+            To skip this entirely, add a session key in the popover.
+            """
+        alert.addButton(withTitle: "Continue")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    // MARK: - Duplicate installs
+
+    /// Installing a new version next to an old one (rather than over it) leaves
+    /// two apps with the same bundle ID, and Spotlight or Launch at login may
+    /// keep opening the old one. Offer to trash the others.
+    private func offerToRemoveOtherCopies() {
+        let me = Bundle.main.bundleURL.standardizedFileURL.resolvingSymlinksInPath()
+        let others = NSWorkspace.shared
+            .urlsForApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+            .map { $0.standardizedFileURL.resolvingSymlinksInPath() }
+            .filter { $0 != me && !$0.path.contains("/.Trash/") && FileManager.default.fileExists(atPath: $0.path) }
+        guard !others.isEmpty else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Another copy of Claude Runway is installed"
+        alert.informativeText = "This version is running from:\n\(me.path)\n\nOther copies:\n"
+            + others.map(\.path).joined(separator: "\n")
+            + "\n\nMove the other copies to the Trash so only this version remains?"
+        alert.addButton(withTitle: "Move to Trash")
+        alert.addButton(withTitle: "Keep Them")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        for url in others {
+            try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
         }
     }
 
