@@ -168,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     /// Claude Code writes transcripts here, so activity is a strong hint that the
-    /// numbers have moved. The 5-minute gate in the controller keeps this cheap.
+    /// numbers have moved. The per-transport floor in RefreshGate keeps this cheap.
     private func watchClaudeProjects() {
         let path = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/projects", isDirectory: true)

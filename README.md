@@ -100,7 +100,8 @@ find "Claude Runway" in Spotlight or `~/Applications`, or drag it to your Dock.
 The popover's **Launch at login** toggle avoids the question entirely.
 
 > **Next step: live updates.** Out of the box the app refreshes every 15 minutes.
-> For updates every 60 seconds, paste in your claude.ai session key — see
+> With your claude.ai session key it updates within seconds of you using Claude
+> Code — see
 > [Getting a session key](#getting-a-session-key). It takes about a minute.
 
 ### Cutting a release
@@ -126,7 +127,7 @@ reports matches the release it came from.
 
 The app works with **no configuration at all** — it falls back to the OAuth token
 Claude Code already stored when you signed in. But that path is slow (a 15-minute
-poll), so if you want 60-second updates, give it a session key.
+poll), so if you want near-instant updates, give it a session key.
 
 The session key is a cookie claude.ai sets in your browser when you log in. You
 copy it out of the browser's developer tools once and paste it into the app.
@@ -162,8 +163,9 @@ copy it out of the browser's developer tools once and paste it into the app.
 
 1. Click the spark in the menu bar to open the popover.
 2. Paste the key into the **Add a session key** field and click **Save**.
-3. Within a few seconds the numbers switch to the live source and refresh every
-   60 seconds from then on.
+3. Within a few seconds the numbers switch to the live source. From then on they
+   update a few seconds after Claude Code does anything, and every 60 seconds
+   otherwise.
 
 Paste the bare value, `sessionKey=…`, or the whole cookie header — all three are
 accepted and normalised. A value that doesn't start with `sk-ant-sid` is rejected
@@ -221,6 +223,13 @@ out of a quota you need.
 |---|---|---|
 | Live (session key) | 60s | 15s |
 | OAuth fallback | 15 min | 10 min |
+
+The poll is only the fallback for when nothing is happening. The app also
+watches `~/.claude/projects/`, so whenever Claude Code writes to a transcript it
+asks for a refresh about 3 seconds later, and it does the same when you open the
+popover or the Mac wakes. Those requests still respect the floor. With a session
+key that means the numbers trail your real usage by roughly 3–15 seconds while
+you're working. On the OAuth path the 10-minute floor absorbs most of them.
 
 Backoff after a 429 is 5 → 10 → 20 → 40 → 60 min, tracked **per transport** — the
 two endpoints have separate quotas, so one being throttled must not penalise the
