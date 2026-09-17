@@ -1,4 +1,4 @@
-# Publishes a prebuilt, universal ClaudeRunway.app zip to GitHub Releases.
+# Publishes a prebuilt, universal ClaudeRunway.app DMG to GitHub Releases.
 #
 # Tag a commit and push it:
 #   git tag v1.1 && git push origin v1.1
@@ -48,11 +48,15 @@ jobs:
 
       - name: Verify the bundle is universal and signed
         run: |
-          APP="$HOME/ClaudeRunway-check/ClaudeRunway.app"
-          mkdir -p "$HOME/ClaudeRunway-check"
-          ditto -x -k "dist/ClaudeRunway-${{ steps.v.outputs.version }}.zip" "$HOME/ClaudeRunway-check"
+          MNT="$HOME/ClaudeRunway-check"
+          mkdir -p "$MNT"
+          hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "dist/ClaudeRunway-${{ steps.v.outputs.version }}.dmg"
+          APP="$MNT/ClaudeRunway.app"
           lipo -archs "$APP/Contents/MacOS/ClaudeRunway"
           codesign --verify --verbose "$APP"
+          test -L "$MNT/Applications"
+          test -f "$MNT/.DS_Store"   # window layout was written
+          hdiutil detach "$MNT"
 
       - name: Publish release
         env:
@@ -60,8 +64,8 @@ jobs:
           VERSION: ${{ steps.v.outputs.version }}
         run: |
           printf '%s\n' \
-            "Download **ClaudeRunway-$VERSION.zip**, unzip, and drag ClaudeRunway.app to Applications." \
-            "Updating: quit Claude Runway first, then drag the new app over the old one and choose **Replace**." \
+            "Download **ClaudeRunway-$VERSION.dmg**, open it, and drag Claude Runway onto the Applications folder." \
+            "Updating: quit Claude Runway first, then drag it onto Applications again and choose **Replace**." \
             "" \
             "The app is ad-hoc signed (no paid Apple Developer account), so the first launch is blocked:" \
             "macOS says it cannot check it for malicious software. Open **System Settings -> Privacy &" \
@@ -75,6 +79,6 @@ jobs:
             "Requires macOS 14+ and Claude Code, installed and signed in." \
             "Universal binary: Apple Silicon and Intel." \
             > notes.md
-          gh release create "v$VERSION" "dist/ClaudeRunway-$VERSION.zip" \
+          gh release create "v$VERSION" "dist/ClaudeRunway-$VERSION.dmg" \
             --title "Claude Runway $VERSION" \
             --notes-file notes.md

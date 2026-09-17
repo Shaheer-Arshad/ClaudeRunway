@@ -46,13 +46,13 @@ Two options — take the download unless you want to read the source first.
 
 ### Download a build
 
-Grab the latest **ClaudeRunway-*.zip** from
-[Releases](https://github.com/Shaheer-Arshad/ClaudeRunway/releases), unzip it,
-and drag `ClaudeRunway.app` to your Applications folder. Universal binary —
+Grab the latest **ClaudeRunway-*.dmg** from
+[Releases](https://github.com/Shaheer-Arshad/ClaudeRunway/releases), open it,
+and drag Claude Runway onto the Applications folder. Universal binary —
 Apple Silicon and Intel.
 
-**Updating:** quit Claude Runway, then drag the new `ClaudeRunway.app` into the
-same folder as the old one and choose **Replace**. If the app finds another copy
+**Updating:** quit Claude Runway, open the new DMG, drag it onto Applications
+again and choose **Replace**. If the app finds another copy
 installed somewhere else, it offers to move that copy to the Trash.
 
 **The first launch will be blocked.** Anything downloaded through a browser
@@ -106,7 +106,7 @@ The popover's **Launch at login** toggle avoids the question entirely.
 
 ### Cutting a release
 
-Tagging publishes the zip; [`.github/workflows/release.yml`](.github/workflows/release.yml)
+Tagging publishes the DMG; [`.github/workflows/release.yml`](.github/workflows/release.yml)
 builds it universal on a macOS runner, runs the tests, and attaches it to a
 GitHub Release.
 
@@ -114,10 +114,10 @@ GitHub Release.
 git tag v1.1 && git push origin v1.1
 ```
 
-To build the same zip locally instead:
+To build the same DMG locally instead:
 
 ```sh
-./package.sh 1.1        # → dist/ClaudeRunway-1.1.zip
+./package.sh 1.1        # → dist/ClaudeRunway-1.1.dmg
 ```
 
 The version argument is stamped into `Info.plist`, so what the About text
