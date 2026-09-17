@@ -18,7 +18,7 @@ Requires **macOS 14+** and **Claude Code, installed and signed in**.
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/popover.png" width="340" alt="Usage tab: 42% session ring with reset countdown, weekly limit bars, and a 24-hour sparkline">
+  <img src="docs/screenshots/popover.png" width="340" alt="Usage tab: 42% session ring with reset countdown, weekly limit bar, and a 24-hour sparkline">
   <img src="docs/screenshots/work.png" width="340" alt="Work tab: today's Claude Code sessions grouped by repo">
 </p>
 <p align="center"><sub>Sample data.</sub></p>
